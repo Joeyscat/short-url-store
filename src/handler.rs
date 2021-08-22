@@ -17,30 +17,69 @@ struct Link {
     url: String,
 }
 
+#[derive(Serialize)]
+struct CreateLinkResult {
+    code: usize,
+    msg: String,
+    data: Option<Link>,
+}
+
+#[derive(Serialize)]
+struct GetLinkResult {
+    code: usize,
+    msg: String,
+    data: Option<Link>,
+}
+
 pub struct LinkHandler {}
 
 impl LinkHandler {
     pub async fn create(extract::Json(payload): extract::Json<CreateLink>) -> impl IntoResponse {
         let code = generate_code().await.expect("generate_code error");
 
-        save_code(code.clone(), payload.url.clone())
-            .await
-            .expect("save_code error");
+        let mut conn = REDIS.get_connection().expect("get_connection error");
+        conn.set::<String, String, String>(code.clone(), payload.url.clone())
+            .expect("set code:url error");
 
         let link = Link {
             code,
             url: payload.url,
         };
 
-        (StatusCode::CREATED, response::Json(link))
+        (
+            StatusCode::CREATED,
+            response::Json(CreateLinkResult {
+                code: 0,
+                msg: "OK".to_string(),
+                data: Option::Some(link),
+            }),
+        )
     }
 
     pub async fn get(extract::Path(code): extract::Path<String>) -> impl IntoResponse {
-        let link = Link {
-            code,
-            url: "jojo".to_string(),
-        };
-        (StatusCode::OK, response::Json(link))
+        let mut conn = REDIS.get_connection().expect("get_connection error");
+
+        match conn.get(code.clone()) {
+            Ok(v) => {
+                let link = Link { code, url: v };
+                (
+                    StatusCode::OK,
+                    response::Json(CreateLinkResult {
+                        code: 0,
+                        msg: "OK".to_string(),
+                        data: Option::Some(link),
+                    }),
+                )
+            }
+            _ => (
+                StatusCode::OK,
+                response::Json(CreateLinkResult {
+                    code: 500,
+                    msg: "code not found".to_string(),
+                    data: Option::None,
+                }),
+            ),
+        }
     }
 
     pub async fn delete(extract::Path(_code): extract::Path<String>) -> impl IntoResponse {
@@ -55,13 +94,6 @@ async fn generate_code() -> Result<String> {
         .expect("get next.url.id error");
 
     Ok(encode(v as usize))
-}
-
-async fn save_code(code: String, url: String) -> Result<()> {
-    let mut conn = REDIS.get_connection().expect("get_connection error");
-    conn.set::<String, String, String>(code, url)
-        .expect("set code:url error");
-    Ok(())
 }
 
 #[cfg(test)]
@@ -92,7 +124,7 @@ mod tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/link/xx")
+                    .uri("/link/B")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -102,8 +134,17 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let expected_body = serde_json::to_vec(&json!({
+            "code": 0,
+            "msg": "OK",
+            "data": {
+                "code": "B",
+                "url": "https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs"
+            }
+        }))
+        .unwrap();
 
-        assert_eq!(&body[..], b"{\"code\":\"xx\",\"url\":\"jojo\"}");
+        assert_eq!(&body[..], expected_body);
     }
 
     #[tokio::test]
@@ -127,7 +168,15 @@ mod tests {
         assert_eq!(response.status(), StatusCode::CREATED);
 
         let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
-        let expected_body = serde_json::to_vec(&json!({"code":"xx","url":"jojo"})).unwrap();
+        let expected_body = serde_json::to_vec(&json!({
+            "code": 0,
+            "msg": "OK",
+            "data": {
+                "code": "W",
+                "url": "https://github.com/tokio-rs/axum/blob/main/examples/todos/src/main.rs"
+            }
+        }))
+        .unwrap();
 
         assert_eq!(&body[..], expected_body);
     }
