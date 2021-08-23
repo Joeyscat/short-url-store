@@ -1,6 +1,6 @@
 use axum::prelude::*;
 use redis::Client;
-use std::net::SocketAddr;
+use std::{env, net::SocketAddr};
 
 #[macro_use]
 extern crate lazy_static;
@@ -32,24 +32,12 @@ async fn main() {
         .unwrap();
 }
 
-pub struct AppConf {
-    pub redis_uri: String,
-}
-
-impl AppConf {
-    fn new(_config_path: &str) -> Self {
-        Self {
-            redis_uri: "".to_string(),
-        }
-    }
-}
-
 lazy_static! {
-    //全局配置文件
-    pub static ref GLOBAL_CONF: AppConf = AppConf::new("app.toml");
-    // 全局redis client
     pub static ref REDIS: Client = {
-        let redis_client = redis::Client::open(GLOBAL_CONF.redis_uri.as_str()).unwrap();
+        let redis_client = redis::Client::open(
+            env::var("REDIS_URI").expect("missing environment variable REDIS_URI"),
+        )
+        .expect("failed to connect to Redis");
         redis_client
     };
 }
