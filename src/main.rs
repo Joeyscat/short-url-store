@@ -15,7 +15,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // build our application with a route
-    let app = route("/", get(|| async { "short-link-service v0.0.1" }))
+    let app = route("/", get(|| async { "short-link-store v0.0.1" }))
         .route(
             "/link",
             post(LinkHandler::create).delete(LinkHandler::delete),
@@ -24,7 +24,7 @@ async fn main() {
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], PORT.to_owned()));
     tracing::debug!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -39,5 +39,9 @@ lazy_static! {
         )
         .expect("failed to connect to Redis");
         redis_client
+    };
+    pub static ref PORT: u16 = match env::var("PORT") {
+        Ok(p) => p.parse::<u16>().expect("parse string to u16 error"),
+        _ => 8001,
     };
 }

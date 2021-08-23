@@ -698,7 +698,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "short-url-service"
+name = "short-url-store"
 version = "0.1.0"
 dependencies = [
  "axum",
